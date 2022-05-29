@@ -1,0 +1,11 @@
+{
+  "webhook_url": "",
+  "game_ini": "",
+  "gameusersettings_ini": "",
+  "auto_wipe": {
+    "enabled": null,
+    "month": "",
+    "day": "",
+    "time": ""
+  }
+}
