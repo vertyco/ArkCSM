@@ -1,5 +1,5 @@
 import asyncio
-import datetime
+from datetime import datetime
 import json
 import logging
 import os
@@ -42,17 +42,8 @@ COMPLETED_MESSAGE = "**The server has finished installing the update.**"
 EVENTS = []
 
 # Find valid appdata path
-packages_path = f"{os.environ['LOCALAPPDATA']}/packages"
-appdata = None
-for packagename in os.listdir(packages_path):
-    if "StudioWildcard" not in packagename:
-        continue
-    local = f"{packages_path}/{packagename}/LocalState"
-    if not os.listdir(local):
-        continue
-    appdata = f"{local}/Saved/UWPConfig/UWP"
-
-TARGET = appdata
+MAIN = f"{os.environ['LOCALAPPDATA']}/Packages/StudioWildcard.4558480580BB9_1w2mm55455e38/LocalState/Saved"
+TARGET = f"{MAIN}/UWPConfig/UWP"
 ARK_BOOT = "explorer.exe shell:appsFolder\StudioWildcard.4558480580BB9_1w2mm55455e38!AppARKSurvivalEvolved"
 XAPP = "explorer.exe shell:appsFolder\Microsoft.XboxApp_8wekyb3d8bbwe!Microsoft.XboxApp"
 
@@ -325,7 +316,7 @@ class ArkHandler:
     async def pull_events(self):
         server = 'localhost'
         logtype = 'System'
-        now = datetime.datetime.now()
+        now = datetime.now()
         hand = win32evtlog.OpenEventLog(server, logtype)
         flags = win32evtlog.EVENTLOG_SEQUENTIAL_READ | win32evtlog.EVENTLOG_BACKWARDS_READ
         events = win32evtlog.ReadEventLog(hand, flags, 0)
@@ -417,3 +408,72 @@ class ArkHandler:
                             win32gui.ShowWindow(window, win32con.SW_MINIMIZE)
                             await asyncio.sleep(5)
             self.checking_updates = False
+
+    async def wipe_checker(self):
+        while True:
+            print("Cheking wipe schedule")
+            wipe = self.config["autowipe"]
+            if not wipe["enabled"] or not wipe["times"]:
+                await asyncio.sleep(30)
+                continue
+            now = datetime.now()
+            for ts in wipe["times"]:
+                time = datetime.strptime(ts, "%m/%d %H:%M")
+                if time.month != now.month:
+                    continue
+                if time.day != now.day:
+                    continue
+                if time.hour != now.hour:
+                    continue
+                td = time.minute - now.minute
+
+                if td == 0:
+                    await self.wipe(wipe["clusterwipe"])
+                    await asyncio.sleep(60)
+                    break
+            else:
+                await asyncio.sleep(5)
+
+    async def wipe(self, wipe_cluster_data):
+        event(self.widget, "WIPING SERVER!!!")
+        self.booting = True
+        await self.kill_ark()
+        if wipe_cluster_data:
+            cpath = f"{MAIN}/clusters/solecluster/"
+            if not os.listdir(cpath):
+                pass
+            else:
+                for cname in os.listdir(cpath):
+                    if "sync" in cname:
+                        continue
+                    os.remove(os.path.join(cpath, cname))
+
+        maps = f"{MAIN}/Maps"
+        for foldername in os.listdir(maps):
+            if "ClientPaintingsCache" in foldername:
+                continue
+            if "sync" in foldername:
+                continue
+            mapfolder = f"{maps}/{foldername}"
+
+            # Only the island has no subfolder
+            subfolder = True
+            if foldername == "SavedArks":
+                subfolder = False
+
+            if not subfolder:
+                mapcontents = os.listdir(mapfolder)
+            else:
+                mapfolder = f"{mapfolder}/{os.listdir(mapfolder)[0]}"
+                mapcontents = os.listdir(mapfolder)
+
+            for item in mapcontents:
+                if "ServerPaintingsCache" in item:
+                    continue
+                if "BanList" in item:
+                    continue
+                if os.path.isdir(os.path.join(mapfolder, item)):
+                    continue
+                os.remove(os.path.join(mapfolder, item))
+        self.booting = False
+        event(self.widget, "WIPE COMPLETE!!!")
