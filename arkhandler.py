@@ -41,12 +41,6 @@ COMPLETED_MESSAGE = "**The server has finished installing the update.**"
 
 EVENTS = []
 
-with open("config.json", "r") as f:
-    conf = json.load(f)
-WEBHOOK_URL = conf["webhook"]
-GAME_SOURCE = conf["gameini"]
-GAMEUSERSETTINGS_SOURCE = conf["gameuserini"]
-
 # Find valid appdata path
 packages_path = f"{os.environ['LOCALAPPDATA']}/packages"
 appdata = None
@@ -81,8 +75,9 @@ def event(widget, log_event):
 
 
 class ArkHandler:
-    def __init__(self, widget):
+    def __init__(self, widget, config):
         self.widget = widget
+        self.config = config
         self.running = False
         self.checking_updates = False
         self.downloading = False
@@ -96,9 +91,9 @@ class ArkHandler:
         self.top_windows = []
 
     async def import_config(self):
-        if GAME_SOURCE:
-            if os.path.exists(GAME_SOURCE) and os.path.exists(TARGET):
-                s_file = os.path.join(GAME_SOURCE, "Game.ini")
+        if self.config["gameini"]:
+            if os.path.exists(self.config["gameini"]) and os.path.exists(TARGET):
+                s_file = os.path.join(self.config["gameini"], "Game.ini")
                 t_file = os.path.join(TARGET, "Game.ini")
                 if os.path.exists(t_file):
                     try:
@@ -118,9 +113,9 @@ class ArkHandler:
                 print("Game.ini synced.")
 
         # sync GameUserSettings.ini file
-        if GAMEUSERSETTINGS_SOURCE:
-            if os.path.exists(GAMEUSERSETTINGS_SOURCE) and os.path.exists(TARGET):
-                s_file = os.path.join(GAMEUSERSETTINGS_SOURCE, "GameUserSettings.ini")
+        if self.config["gameuserini"]:
+            if os.path.exists(self.config["gameuserini"]) and os.path.exists(TARGET):
+                s_file = os.path.join(self.config["gameuserini"], "GameUserSettings.ini")
                 t_file = os.path.join(TARGET, "GameUserSettings.ini")
                 if os.path.exists(t_file):
                     try:
@@ -171,7 +166,7 @@ class ArkHandler:
             pywinauto.mouse.click(button='left', coords=(int(x_click), int(y_click)))
 
     async def send_hook(self, title, message, color, msg=None):
-        if not WEBHOOK_URL:
+        if not self.config["webhook"]:
             return
         if msg:
             data = {"username": "ArkHandler", "avatar_url": "https://i.imgur.com/Wv5SsBo.png", "embeds": [
@@ -199,7 +194,7 @@ class ArkHandler:
             async with aiohttp.ClientSession() as session:
                 timeout = aiohttp.ClientTimeout(total=20)
                 async with session.post(
-                        url=WEBHOOK_URL,
+                        url=self.config["webhook"],
                         data=json.dumps(data),
                         headers=headers,
                         timeout=timeout) as res:

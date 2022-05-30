@@ -2,8 +2,10 @@ import asyncio
 import json
 import os
 from time import sleep
+from datetime import datetime
 
 import customtkinter as ckt
+import tkinter as tk
 
 from executor import threader
 
@@ -45,10 +47,7 @@ class ArkCSM(ckt.CTk):
 
         # ============ toggles ===========
         self.autorun = ckt.CTkSwitch(master=self.frame_left, text="Auto Run", command=self.toggle_autorun)
-        self.autorun.grid(row=8, column=0, pady=10, padx=20, sticky="w")
-
-        self.autowipe = ckt.CTkSwitch(master=self.frame_left, text="Auto Wipe", command=self.toggle_autowipe)
-        self.autowipe.grid(row=9, column=0, pady=10, padx=20, sticky="w")
+        self.autorun.grid(row=9, column=0, pady=10, padx=20, sticky="w")
 
         self.darkmode = ckt.CTkSwitch(master=self.frame_left, text="Dark Mode", command=self.change_mode)
         self.darkmode.grid(row=10, column=0, pady=10, padx=20, sticky="w")
@@ -56,10 +55,16 @@ class ArkCSM(ckt.CTk):
         self.save = ckt.CTkButton(
             master=self.frame_left,
             text="Cycle Themes",
-            fg_color=("gray75", "gray30"),
             command=self.cycle_themes
         )
         self.save.grid(row=2, column=0, pady=10, padx=20)
+
+        self.autowipe_button = ckt.CTkButton(
+            master=self.frame_left,
+            text="AutoWipe Settings",
+            command=self.autowipe_settings
+        )
+        self.autowipe_button.grid(row=3, column=0, pady=10, padx=10)
 
         # ============ right frame ============
         self.frame_right = ckt.CTkFrame(master=self)
@@ -137,8 +142,112 @@ class ArkCSM(ckt.CTk):
         if self.config["autorun"]:
             self.autorun.select()
 
-        if self.config["autowipe"]["enabled"]:
-            self.autowipe.select()
+    def autowipe_settings(self):
+        autowipe = self.config["autowipe"]
+        window = ckt.CTkToplevel(self)
+        window.geometry("305x390")
+
+        def toggle_autowipe():
+            if toggle.get():
+                self.config["autowipe"]["enabled"] = True
+                print("Turning autowipe on")
+            else:
+                self.config["autowipe"]["enabled"] = False
+                print("Turning autowipe off")
+            with open("config.json", "w") as f:
+                f.write(json.dumps(self.config))
+        toggle = ckt.CTkCheckBox(window, text="Enable Autowipe", command=toggle_autowipe)
+        toggle.grid(row=0, column=0, sticky="w")
+        if autowipe["enabled"]:
+            toggle.select()
+
+        def toggle_clusterwipe():
+            if ctoggle.get():
+                self.config["autowipe"]["clusterwipe"] = True
+                print("Turning clusterwipe on")
+            else:
+                self.config["autowipe"]["clusterwipe"] = False
+                print("Turning clusterwipe off")
+            with open("config.json", "w") as f:
+                f.write(json.dumps(self.config))
+        ctoggle = ckt.CTkCheckBox(window, text="Also Wipe Cluster Data", command=toggle_clusterwipe)
+        ctoggle.grid(row=1, column=0, sticky="w")
+        if autowipe["clusterwipe"]:
+            ctoggle.select()
+
+        def add_timestamp():
+            print("timestamp save")
+            timestamp = time_entry.get()
+            try:
+                datetime.strptime(timestamp, "%m/%d %H:%M")
+                valid = True
+            except (ValueError, TypeError):
+                valid = False
+            timestamps = self.config["autowipe"]["times"]
+            if valid:
+                if timestamp not in timestamps:
+                    self.config["autowipe"]["times"].append(timestamp)
+                    time_entry.configure(fg_color=GREEN)
+                    time_entry.delete(0, "end")
+                    time_entry.insert(0, "Timestamp Added!")
+                    display_times()
+                    self.update()
+                    sleep(1)
+                    time_entry.delete(0, "end")
+                    time_entry.insert(0, "mm/dd HH:MM")
+                    time_entry.configure(fg_color=None)
+                    with open("config.json", "w") as f:
+                        f.write(json.dumps(self.config))
+                else:
+                    time_entry.configure(fg_color=RED)
+                    time_entry.delete(0, "end")
+                    time_entry.insert(0, "Timestamp Already Exists!")
+                    self.update()
+                    sleep(1)
+                    time_entry.delete(0, "end")
+                    time_entry.insert(0, "mm/dd HH:MM")
+                    time_entry.configure(fg_color=None)
+            else:
+                time_entry.configure(fg_color=RED)
+                time_entry.delete(0, "end")
+                time_entry.insert(0, "Invalid Timestamp!")
+                self.update()
+                sleep(1)
+                time_entry.delete(0, "end")
+                time_entry.insert(0, "mm/dd HH:MM")
+                time_entry.configure(fg_color=None)
+
+        def rem_timestamp():
+            print("removed")
+
+        tadd = ckt.CTkButton(window, text="add", command=add_timestamp)
+        tadd.grid(row=3, column=0, sticky="n")
+        trem = ckt.CTkButton(window, text="remove", command=rem_timestamp)
+        trem.grid(row=3, column=1, sticky="n")
+        helplabel = ckt.CTkLabel(window, text="Enter Timestring Here")
+        helplabel.grid(row=4, columnspan=2, padx=24, sticky="w")
+        time_entry = ckt.CTkEntry(window, placeholder_text="mm/dd HH:MM")
+        time_entry.grid(row=5, column=0, columnspan=2, padx=30, sticky="ew")
+        window.rowconfigure(2, minsize=30)
+
+        def display_times():
+            text = ""
+            times = self.config["autowipe"]["times"]
+            for time in times:
+                text += f"{time}\n"
+            saved.configure(text=text)
+
+        saved_label = ckt.CTkLabel(window, text="Saved Times")
+        saved_label.grid(row=6, columnspan=2, padx=10, sticky="w")
+        frame = ckt.CTkFrame(window)
+        frame.grid(row=7, column=0, columnspan=2, rowspan=1, padx=30, sticky="nsew")
+        saved = ckt.CTkLabel(frame, text="saved")
+        saved.grid(row=7, column=0, sticky="w")
+        # saved = ckt.CTkEntry(window, placeholder_text="", height=100, state="disabled")
+        # saved.grid(row=7, rowspan=2, columnspan=2, padx=30, sticky="nsew")
+        # window.rowconfigure(7, minsize=30)
+        display_times()
+
 
     def cycle_themes(self):
         current = self.config["theme"]
@@ -172,7 +281,6 @@ class ArkCSM(ckt.CTk):
     def save_webhook(self):
         text = self.webhook_entry.get()
         saved = self.config["webhook"]
-        print(text)
         if text and "discord.com/api/webhooks" in text:
             self.config["webhook"] = text
             self.webhook_entry.delete(0, "end")
@@ -266,16 +374,6 @@ class ArkCSM(ckt.CTk):
         with open("config.json", "w") as f:
             f.write(json.dumps(self.config))
 
-    def toggle_autowipe(self):
-        if self.autowipe.get():
-            self.config["autowipe"]["enabled"] = True
-            print("Turning autowipe on")
-        else:
-            self.config["autowipe"]["enabled"] = False
-            print("Turning autowipe off")
-        with open("config.json", "w") as f:
-            f.write(json.dumps(self.config))
-
     def change_mode(self):
         if self.darkmode.get() == 1:
             ckt.set_appearance_mode("dark")
@@ -306,7 +404,7 @@ default_config = {
     "gameuserini": None,
     "darkmode": True,  # Modes: "System" (standard), "Dark", "Light"
     "theme": "blue",  # Themes: "blue" (standard), "green", "dark-blue"
-    "autowipe": {"enabled": False, "month": 0, "day": 0, "hour": 0}
+    "autowipe": {"enabled": False, "clusterwipe": False, "times": []}  # mm/dd hh:mm (24hour) %m/%d %H:%M
 }
 
 if __name__ == "__main__":
