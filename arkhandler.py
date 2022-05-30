@@ -1,5 +1,4 @@
 import asyncio
-import configparser
 import datetime
 import json
 import logging
@@ -7,13 +6,11 @@ import os
 import shutil
 
 import aiohttp
-import colorama
 import psutil
 import pywinauto.mouse
 import win32con
 import win32evtlog
 import win32gui
-from colorama import Fore
 from pywinauto.application import Application
 
 """
@@ -21,14 +18,12 @@ Calculating aspect ratios
 x = measured x coordinate / total pixel width (ex: 500/1280)
 y = measured y coordinate / total pixel height (ex: 300/720)
 """
-
 TEAMVIEWER = (0.59562272, 0.537674419)
 START = (0.49975574, 0.863596872)
 HOST = (0.143624817, 0.534317984)
 RUN = (0.497313141, 0.748913988)
 ACCEPT1 = (0.424035173, 0.544743701)
 ACCEPT2 = (0.564240352, 0.67593397)
-
 INVITE = (0.8390625, 0.281944444)
 EXIT = (0.66171875, 0.041666667)
 
@@ -40,36 +35,54 @@ logging.basicConfig(filename='logs.log',
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 
-user = os.environ['USERPROFILE']
-appdata = "\\AppData\\Local\\Packages\\StudioWildcard.4558480580BB9_1w2mm55455e38\\LocalState\\Saved\\UWPConfig\\UWP"
-TARGET = f"{user}{appdata}"
+DOWNLOAD_MESSAGE = "**The server has started downloading an update, and will go down once it starts installing.**"
+INSTALL_MESSAGE = "**The server has started installing the update. Stand by...**"
+COMPLETED_MESSAGE = "**The server has finished installing the update.**"
+
+EVENTS = []
+
+with open("config.json", "r") as f:
+    conf = json.load(f)
+WEBHOOK_URL = conf["webhook"]
+GAME_SOURCE = conf["gameini"]
+GAMEUSERSETTINGS_SOURCE = conf["gameuserini"]
+
+# Find valid appdata path
+packages_path = f"{os.environ['LOCALAPPDATA']}/packages"
+appdata = None
+for packagename in os.listdir(packages_path):
+    if "StudioWildcard" not in packagename:
+        continue
+    local = f"{packages_path}/{packagename}/LocalState"
+    if not os.listdir(local):
+        continue
+    appdata = f"{local}/Saved/UWPConfig/UWP"
+
+TARGET = appdata
 ARK_BOOT = "explorer.exe shell:appsFolder\StudioWildcard.4558480580BB9_1w2mm55455e38!AppARKSurvivalEvolved"
 XAPP = "explorer.exe shell:appsFolder\Microsoft.XboxApp_8wekyb3d8bbwe!Microsoft.XboxApp"
-LOGO = """
-                _    _    _                 _ _           
-     /\        | |  | |  | |               | | |          
-    /  \   _ __| | _| |__| | __ _ _ __   __| | | ___ _ __ 
-   / /\ \ | '__| |/ /  __  |/ _` | '_ \ / _` | |/ _ \ '__|
-  / ____ \| |  |   <| |  | | (_| | | | | (_| | |  __/ |   
- /_/    \_\_|  |_|\_\_|  |_|\__,_|_| |_|\__,_|_|\___|_|   
-                                                          
-                                                          
-  ___       __   __       _               
- | _ )_  _  \ \ / /__ _ _| |_ _  _ __ ___ 
- | _ \ || |  \ V / -_) '_|  _| || / _/ _ \\
- |___/\_, |   \_/\___|_|  \__|\_, \__\___/
-      |__/                    |__/        
-"""
-colorama.init()
-print(Fore.GREEN + LOGO)
 
 
 def window_enumeration_handler(hwnd, windows):
     windows.append((hwnd, win32gui.GetWindowText(hwnd)))
 
 
+def event(widget, log_event):
+    global EVENTS
+    EVENTS.append(log_event)
+    tolog = EVENTS
+    if len(EVENTS) > 7:
+        tolog = EVENTS[-7:]
+        EVENTS = tolog
+    text = ""
+    for i in tolog:
+        text += f"{i}\n"
+    widget.configure(text=text)
+
+
 class ArkHandler:
-    def __init__(self):
+    def __init__(self, widget):
+        self.widget = widget
         self.running = False
         self.checking_updates = False
         self.downloading = False
@@ -82,9 +95,8 @@ class ArkHandler:
 
         self.top_windows = []
 
-    @staticmethod
-    async def import_config():
-        if GAME_SOURCE != "":
+    async def import_config(self):
+        if GAME_SOURCE:
             if os.path.exists(GAME_SOURCE) and os.path.exists(TARGET):
                 s_file = os.path.join(GAME_SOURCE, "Game.ini")
                 t_file = os.path.join(TARGET, "Game.ini")
@@ -92,18 +104,21 @@ class ArkHandler:
                     try:
                         os.remove(t_file)
                     except Exception as ex:
-                        print(Fore.RED + f"Failed to sync Game.ini\nError: {ex}")
+                        event(self.widget, f"Failed to sync Game.ini, check log for details.")
+                        print(f"Failed to sync Game.ini\nError: {ex}")
                         log.warning(f"Failed to sync Game.ini\nError: {ex}")
                         return
                 if not os.path.exists(s_file):
-                    print(Fore.RED + f"Cannot find source Game.ini file!")
+                    event(self.widget, f"Cannot find source Game.ini file, check log for details.")
+                    print(f"Cannot find source Game.ini file!")
                     log.warning(f"Cannot find source Game.ini file!")
                     return
                 shutil.copyfile(s_file, t_file)
-                print(Fore.CYAN + "Game.ini synced.")
+                event(self.widget, "Game.ini synced.")
+                print("Game.ini synced.")
 
         # sync GameUserSettings.ini file
-        if GAMEUSERSETTINGS_SOURCE != "":
+        if GAMEUSERSETTINGS_SOURCE:
             if os.path.exists(GAMEUSERSETTINGS_SOURCE) and os.path.exists(TARGET):
                 s_file = os.path.join(GAMEUSERSETTINGS_SOURCE, "GameUserSettings.ini")
                 t_file = os.path.join(TARGET, "GameUserSettings.ini")
@@ -111,15 +126,18 @@ class ArkHandler:
                     try:
                         os.remove(t_file)
                     except Exception as ex:
-                        print(Fore.RED + f"Failed to sync GameUserSettings.ini\nError: {ex}")
+                        event(self.widget, f"Failed to sync GameUserSettings.ini, check log for details.")
+                        print(f"Failed to sync GameUserSettings.ini\nError: {ex}")
                         log.warning(f"Failed to sync GameUserSettings.ini\nError: {ex}")
                         return
                 if not os.path.exists(s_file):
-                    print(Fore.RED + f"Cannot find source GameUserSettings.ini file!")
+                    event(self.widget, "Cannot find source GameUserSettings.ini file, check log for details.")
+                    print(f"Cannot find source GameUserSettings.ini file!")
                     log.warning(f"Cannot find source GameUserSettings.ini file!")
                     return
                 shutil.copyfile(s_file, t_file)
-                print(Fore.CYAN + "GameUserSettings.ini synced.")
+                event(self.widget, "GameUserSettings.ini synced.")
+                print("GameUserSettings.ini synced.")
 
     @staticmethod
     async def calc_position_click(clicktype, action=None):
@@ -152,8 +170,7 @@ class ArkHandler:
         else:
             pywinauto.mouse.click(button='left', coords=(int(x_click), int(y_click)))
 
-    @staticmethod
-    async def send_hook(title, message, color, msg=None):
+    async def send_hook(self, title, message, color, msg=None):
         if not WEBHOOK_URL:
             return
         if msg:
@@ -176,7 +193,8 @@ class ArkHandler:
         headers = {
             "Content-Type": "application/json"
         }
-        print(Fore.WHITE + "Attempting to send webhook")
+        event(self.widget, "Attempting to send webhook")
+        print("Attempting to send webhook")
         try:
             async with aiohttp.ClientSession() as session:
                 timeout = aiohttp.ClientTimeout(total=20)
@@ -186,11 +204,14 @@ class ArkHandler:
                         headers=headers,
                         timeout=timeout) as res:
                     if res.status == 204:
-                        print(Fore.GREEN + f"Sent {title} Webhook - Status: {res.status}")
+                        event(self.widget, f"Sent {title} Webhook - Status: {res.status}")
+                        print(f"Sent {title} Webhook - Status: {res.status}")
                     else:
-                        print(Fore.RED + f"{title} Webhook may have failed - Status: {res.status}")
+                        event(self.widget, f"{title} Webhook may have failed - Status: {res.status}")
+                        print(f"{title} Webhook may have failed - Status: {res.status}")
                         log.warning(f"{title} Webhook may have failed - Status: {res.status}")
         except Exception as e:
+            event(self.widget, f"SendHook Error, check logs")
             log.warning(f"SendHook: {e}")
 
     @staticmethod
@@ -224,6 +245,7 @@ class ArkHandler:
         win32gui.EnumWindows(window_enumeration_handler, self.top_windows)
         for window in self.top_windows:
             if "sponsored session" in window[1].lower():
+                event(self.widget, "Closing teamviewer sponsored session window")
                 print("Closing teamviewer sponsored session window")
                 handle = win32gui.FindWindow(None, window[1])
                 win32gui.SetForegroundWindow(handle)
@@ -236,14 +258,19 @@ class ArkHandler:
         while True:
             if await self.ark():
                 if not self.running:
-                    print(Fore.CYAN + "Ark is Running.")
+                    event(self.widget, "Ark is Running")
+                    print("Ark is Running.")
                     self.running = True
             else:
                 if not self.updating and not self.checking_updates and not self.booting:
-                    print(Fore.RED + "Ark is not Running! Beginning reboot sequence...")
+                    event(self.widget, "Ark is not Running! Beginning reboot sequence...")
+                    print("Ark is not Running! Beginning reboot sequence...")
                     try:
+                        print("Importing config")
                         await self.import_config()
+                        print("Sending hook")
                         await self.send_hook("Server Down", "Beginning reboot sequence...", 16739584)
+                        print("Booting ark")
                         await self.boot_ark()
                     except Exception as e:
                         log.warning(f"Watchdog: {e}")
@@ -253,19 +280,22 @@ class ArkHandler:
         self.running = False
         self.booting = True
         if await self.ark():
+            print("Ark already running. Killing.")
             await self.kill_ark()
             await asyncio.sleep(20)
         await asyncio.sleep(5)
         await self.close_tv()
         # start ark
-        print(Fore.MAGENTA + "Attempting to launch Ark")
+        event(self.widget, "Attempting to launch Ark")
+        print("Attempting to launch Ark")
         os.system(ARK_BOOT)
         await asyncio.sleep(15)
         # make sure ark is actually fucking running and didnt crash
         if not await self.ark():
-            print(Fore.RED + "Ark crashed, trying again... (Thanks Wildcard)")
+            event(self.widget, "Ark crashed, trying again... (Thanks Wildcard)")
+            print("Ark crashed, trying again... (Thanks Wildcard)")
             os.system(ARK_BOOT)
-            await asyncio.sleep(12)
+            await asyncio.sleep(20)
 
         await self.calc_position_click(START, "double")
         await asyncio.sleep(8)
@@ -277,10 +307,12 @@ class ArkHandler:
         await asyncio.sleep(2)
         await self.calc_position_click(ACCEPT2)
 
-        print(Fore.GREEN + "Boot macro finished, loading server files.")
+        event(self.widget, "Boot macro finished, loading server files.")
+        print("Boot macro finished, loading server files.")
         await self.send_hook("Booting", "Loading server files...", 19357)
         await asyncio.sleep(10)
-        print(Fore.YELLOW + "Stopping LicenseManager")
+        event(self.widget, "Stopping LicenseManager")
+        print("Stopping LicenseManager")
         os.system("net stop LicenseManager")
         await asyncio.sleep(60)
         await self.send_hook("Reboot Complete", "Server should be back online.", 65314)
@@ -302,23 +334,23 @@ class ArkHandler:
         hand = win32evtlog.OpenEventLog(server, logtype)
         flags = win32evtlog.EVENTLOG_SEQUENTIAL_READ | win32evtlog.EVENTLOG_BACKWARDS_READ
         events = win32evtlog.ReadEventLog(hand, flags, 0)
-        for event in events:
-            data = event.StringInserts
+        for e in events:
+            data = e.StringInserts
             if "-StudioWildcard" in str(data[0]):
-                if self.last_update == event.TimeGenerated:
+                if self.last_update == e.TimeGenerated:
                     return
 
-                eid = event.EventID
+                eid = e.EventID
                 string = data[0]
 
-                td = now - event.TimeGenerated
+                td = now - e.TimeGenerated
                 if td.total_seconds() < 3600:
                     recent = True
                 else:
                     recent = False
 
                 if eid == 44 and recent and not self.updating:
-                    print(Fore.RED + f"DOWNLOAD DETECTED: {string}")
+                    print(f"DOWNLOAD DETECTED: {string}")
                     await self.send_hook(
                         "Download Detected!",
                         DOWNLOAD_MESSAGE,
@@ -328,7 +360,7 @@ class ArkHandler:
                     self.updating = True
 
                 elif eid == 43 and recent and not self.installing:
-                    print(Fore.MAGENTA + f"INSTALL DETECTED: {string}")
+                    print(f"INSTALL DETECTED: {string}")
                     await self.send_hook(
                         "Installing",
                         INSTALL_MESSAGE,
@@ -339,7 +371,7 @@ class ArkHandler:
 
                 elif eid == 19 and recent:
                     if self.updating or self.installing:
-                        print(Fore.GREEN + f"UPDATE SUCCESS: {string}")
+                        print(f"UPDATE SUCCESS: {string}")
                         await self.send_hook(
                             "Update Complete",
                             COMPLETED_MESSAGE,
@@ -350,7 +382,7 @@ class ArkHandler:
                         self.updating = False
                         self.installing = False
                         await self.boot_ark()
-                self.last_update = event.TimeGenerated
+                self.last_update = e.TimeGenerated
                 return
 
     async def update_checker(self):
@@ -390,28 +422,3 @@ class ArkHandler:
                             win32gui.ShowWindow(window, win32con.SW_MINIMIZE)
                             await asyncio.sleep(5)
             self.checking_updates = False
-
-
-try:
-    Config = configparser.ConfigParser()
-    Config.read("config.ini")
-    WEBHOOK_URL = Config.get("UserSettings", "webhookurl").strip('\"')
-    DOWNLOAD_MESSAGE = Config.get("UserSettings", "downloadmessage").strip('\"')
-    INSTALL_MESSAGE = Config.get("UserSettings", "installmessage").strip('\"')
-    COMPLETED_MESSAGE = Config.get("UserSettings", "completedmessage").strip('\"')
-    GAME_SOURCE = Config.get("UserSettings", "gameinipath").strip('\"')
-    GAMEUSERSETTINGS_SOURCE = Config.get("UserSettings", "gameusersettingsinipath").strip('\"')
-    print(Fore.WHITE + f"Config importing:\n{GAME_SOURCE}\n{GAMEUSERSETTINGS_SOURCE}")
-except Exception as e:
-    print(Fore.RED + f"Config failed to import!\nError: {e}")
-    log.warning(f"Config failed to import!\nError: {e}")
-
-loop = asyncio.get_event_loop()
-at = ArkHandler()
-try:
-    asyncio.ensure_future(at.event_puller())
-    asyncio.ensure_future(at.watchdog())
-    asyncio.ensure_future(at.update_checker())
-    loop.run_forever()
-finally:
-    loop.close()
