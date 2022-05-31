@@ -168,6 +168,7 @@ class ArkCSM(ctk.CTk):
     def autowipe_settings(self):
         autowipe = self.config["autowipe"]
         window = ctk.CTkToplevel(self)
+        window.title("AutoWipe Settings")
         window.geometry("420x300")
 
         def toggle_autowipe():
