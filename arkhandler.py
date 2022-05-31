@@ -27,7 +27,6 @@ ACCEPT2 = (0.564240352, 0.67593397)
 INVITE = (0.8390625, 0.281944444)
 EXIT = (0.66171875, 0.041666667)
 
-os.system('title ArkHandler')
 logging.basicConfig(filename='logs.log',
                     filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s',

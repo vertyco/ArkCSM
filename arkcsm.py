@@ -1,12 +1,13 @@
 import asyncio
 import json
 import os
+import threading
 from datetime import datetime
 from time import sleep
 
 import customtkinter as ctk
 
-from executor import threader
+from arkhandler import ArkHandler
 
 GREEN = "#074a0d"
 RED = "#542929"
@@ -18,6 +19,19 @@ THEMES = {
     "green": "#00b00f",
     "sweetkind": "#730364"
 }
+
+
+def threader(widget, loop, config):
+    threading.Thread(target=executor1, args=(widget, loop, config,)).start()
+
+
+def executor1(widget, loop, config):
+    at = ArkHandler(widget, config)
+    loop.create_task(at.event_puller())
+    loop.create_task(at.watchdog())
+    loop.create_task(at.update_checker())
+    loop.create_task(at.wipe_checker())
+    loop.run_forever()
 
 
 class ArkCSM(ctk.CTk):
