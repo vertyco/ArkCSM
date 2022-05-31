@@ -19,7 +19,7 @@ To use ArkCSM, you will need python installed on your computer.
 4. run 'python arkcsm.py'
 5. Done. You can configure the app how you like and it will generate a config.json file
 
-Alternatively you can run the 'start.bat' script to execute it
+Alternatively you can run the 'start.bat' script to execute it(remember to run as administrator)
 ```
 
 This script is just to make it a little easier to host crossplay ark servers.

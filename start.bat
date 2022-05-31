@@ -1,2 +1,2 @@
-pythonw arkcsm.pyw
+pythonw arkcsm.py
 pause
