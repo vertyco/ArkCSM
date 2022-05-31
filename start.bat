@@ -1,0 +1,2 @@
+pythonw arkcsm.pyw
+pause
